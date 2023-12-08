@@ -1,9 +1,13 @@
 import express from "express";
 
 const app = express();
+
 import path from "path";
 import fs from "fs";
 import ndjson from "ndjson";
+import cors from "cors";
+
+app.use(cors());
 
 app.use( express.static( path.join( "public" ) ) );
 
