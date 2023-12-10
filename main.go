@@ -50,8 +50,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 
 	match := pathRE.FindStringSubmatch(r.URL.Path)
 	if len(match) != 2 {
-		// FIXME: 404
-		log.Printf("Miner ID not found in URL path: %s", r.URL.Path)
+		str := fmt.Sprintf("Miner ID not found in URL path: %s", r.URL.Path)
+		log.Print(str)
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, str)
+		io.WriteString(w, "\n")
 		return
 	}
 	minerID := match[1]
@@ -75,7 +78,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		for _, epochString := range epochsStrings {
 			epochNum, err := strconv.ParseUint(epochString, 10, 64)
 			if err != nil {
-				log.Printf("Could not parse epoch: %s", epochString)
+				str := fmt.Sprintf("Could not parse epoch: %s", epochString)
+				log.Print(str)
+				w.WriteHeader(http.StatusBadRequest)
+				io.WriteString(w, str)
+				io.WriteString(w, "\n")
 				return
 			}
 			epochs = append(epochs, epochNum)
@@ -84,8 +91,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 
 	minerAddr, err := address.NewFromString(minerID)
 	if err != nil {
-		// FIXME: 404
-		log.Print(err)
+		str := fmt.Sprintf("Could not parse miner ID: %s", minerID)
+		log.Print(str)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, str)
+		io.WriteString(w, "\n")
 		return
 	}
 
@@ -108,7 +118,7 @@ epochsLoop:
 			tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 			maxPartitions, errorCh, progressCh, resultCh)
 
-		var epoch uint64
+		var epoch uint64 = height
 		var actor *filtypes.ActorV5
 		var totalBurn *big.Int
 		var sectorsTerminated uint64
@@ -132,6 +142,11 @@ epochsLoop:
 				break loop
 			case err := <-errorCh:
 				log.Printf("Error at epoch %d: %v", epoch, err)
+				str := fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}\n", epoch, err)
+				io.WriteString(w, str)
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
 				continue epochsLoop
 			case progress := <-progressCh:
 				if progress.Epoch > 0 {
@@ -194,7 +209,7 @@ epochsLoop:
 		b, err := json.Marshal(jsonResult)
 		if err != nil {
 			log.Printf("Error at epoch %d: %v", epoch, err)
-			continue epochsLoop
+			b = []byte(fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}", epoch, err))
 		}
 		str := fmt.Sprintf("%s\n", string(b))
 		io.WriteString(w, str)
