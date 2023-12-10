@@ -223,9 +223,16 @@ func main() {
 	viper.AddConfigPath(".")
 	viper.SetConfigName("config")
 	viper.SetConfigType("env")
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Fatal(err)
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired
+			log.Printf("Warning: %v\n", err)
+		} else {
+			// Config file was found but another error was produced
+			log.Fatal(err)
+		}
 	}
 
 	fmt.Println("Lotus RPC URL:", viper.GetString("lotus_addr"))
@@ -241,7 +248,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", getRoot)
 	handler := cors.Default().Handler(mux)
-	err = http.ListenAndServe(":3000", handler)
+	err := http.ListenAndServe(":3000", handler)
 	if errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf("server closed\n")
 	} else if err != nil {

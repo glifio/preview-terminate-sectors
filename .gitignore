@@ -1,3 +1,4 @@
 config.env.*
 !config.env.sample
 config.env
+preview-terminate-sectors
