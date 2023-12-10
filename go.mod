@@ -5,7 +5,6 @@ go 1.21.1
 replace github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52 => github.com/glifio/go-secp256k1 v0.0.1
 
 require (
-  github.com/rs/cors v1.10.1
 	github.com/ALTree/bigfloat v0.0.0-20220102081255-38c8b72a9924 // indirect
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/GeertJohan/go.incremental v1.0.0 // indirect
@@ -31,12 +30,12 @@ require (
 	github.com/filecoin-project/go-hamt-ipld v0.1.5 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v2 v2.0.0 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.1.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.3.1 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.3.1
 	github.com/filecoin-project/go-padreader v0.0.1 // indirect
 	github.com/filecoin-project/go-state-types v0.11.1 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
-	github.com/filecoin-project/lotus v1.23.0 // indirect
+	github.com/filecoin-project/lotus v1.23.0
 	github.com/filecoin-project/specs-actors v0.9.15 // indirect
 	github.com/filecoin-project/specs-actors/v2 v2.3.6 // indirect
 	github.com/filecoin-project/specs-actors/v3 v3.1.2 // indirect
@@ -67,7 +66,7 @@ require (
 	github.com/ipfs/bbloom v0.0.4 // indirect
 	github.com/ipfs/go-block-format v0.1.1 // indirect
 	github.com/ipfs/go-blockservice v0.5.0 // indirect
-	github.com/ipfs/go-cid v0.4.0 // indirect
+	github.com/ipfs/go-cid v0.4.0
 	github.com/ipfs/go-datastore v0.6.0 // indirect
 	github.com/ipfs/go-graphsync v0.14.3 // indirect
 	github.com/ipfs/go-ipfs-blockstore v1.2.0 // indirect
@@ -125,6 +124,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/polydawn/refmt v0.89.0 // indirect
 	github.com/raulk/clock v1.1.0 // indirect
+	github.com/rs/cors v1.10.1
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
@@ -166,6 +166,6 @@ require (
 
 require (
 	github.com/filecoin-project/go-address v1.1.0
-	github.com/glifio/go-pools v0.0.0-20231207210519-d8bea7f18b21 // indirect
+	github.com/glifio/go-pools v0.0.0-20231207210519-d8bea7f18b21
 	github.com/spf13/viper v1.18.1
 )
