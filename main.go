@@ -42,6 +42,17 @@ func init() {
 	pathRE = regexp.MustCompile(`^/([ft]0\d+)$`)
 }
 
+func auth(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, pass, _ := r.BasicAuth()
+		if user != viper.GetString("auth_user") || pass != viper.GetString("auth_password") {
+			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			return
+		}
+		fn(w, r)
+	}
+}
+
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -52,9 +63,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	if len(match) != 2 {
 		str := fmt.Sprintf("Miner ID not found in URL path: %s", r.URL.Path)
 		log.Print(str)
-		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, str)
-		io.WriteString(w, "\n")
+		http.Error(w, str, http.StatusNotFound)
 		return
 	}
 	minerID := match[1]
@@ -80,9 +89,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				str := fmt.Sprintf("Could not parse epoch: %s", epochString)
 				log.Print(str)
-				w.WriteHeader(http.StatusBadRequest)
-				io.WriteString(w, str)
-				io.WriteString(w, "\n")
+				http.Error(w, str, http.StatusBadRequest)
 				return
 			}
 			epochs = append(epochs, epochNum)
@@ -93,9 +100,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		str := fmt.Sprintf("Could not parse miner ID: %s", minerID)
 		log.Print(str)
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, str)
-		io.WriteString(w, "\n")
+		http.Error(w, str, http.StatusBadRequest)
 		return
 	}
 
@@ -246,7 +251,7 @@ func main() {
 	)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", getRoot)
+	mux.HandleFunc("/", auth(getRoot))
 	handler := cors.Default().Handler(mux)
 	err := http.ListenAndServe(":3000", handler)
 	if errors.Is(err, http.ErrServerClosed) {
