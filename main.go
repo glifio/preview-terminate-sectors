@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/filecoin-project/go-address"
 	filtypes "github.com/filecoin-project/lotus/chain/types"
@@ -33,10 +34,27 @@ type JSONResult struct {
 	RecoveryRatio     float64
 }
 
-func getRoot(w http.ResponseWriter, r *http.Request) {
-	query := node.PoolsArchiveSDK.Query()
+var pathRE *regexp.Regexp
 
-	minerID := "f01931245"
+func init() {
+	pathRE = regexp.MustCompile(`^/([ft]0\d+)$`)
+}
+
+func getRoot(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	fmt.Println("---")
+	fmt.Printf("Request Path: %+v\n", r.URL.Path)
+
+	match := pathRE.FindStringSubmatch(r.URL.Path)
+	if len(match) != 2 {
+		// FIXME: 404
+		log.Printf("Miner ID not found in URL path: %s", r.URL.Path)
+		return
+	}
+	minerID := match[1]
+
+	query := node.PoolsArchiveSDK.Query()
 
 	var batchSize uint64 = 40
 	var gasLimit uint64 = 270000000000
@@ -66,13 +84,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("---")
-
 	errorCh := make(chan error)
 	progressCh := make(chan *types.PreviewTerminateSectorsProgress)
 	resultCh := make(chan *types.PreviewTerminateSectorsReturn)
 
-	go query.PreviewTerminateSectors(context.Background(), minerAddr,
+	go query.PreviewTerminateSectors(ctx, minerAddr,
 		tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 		maxPartitions, errorCh, progressCh, resultCh)
 
