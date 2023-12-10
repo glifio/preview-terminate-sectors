@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -19,6 +21,17 @@ import (
 )
 
 var height uint64 = 3461984
+
+type JSONResult struct {
+	Epoch             uint64
+	Miner             address.Address
+	SectorsTerminated uint64
+	SectorsCount      uint64
+	Balance           *big.Int
+	TotalBurn         *big.Int
+	LiquidationValue  *big.Int
+	RecoveryRatio     float64
+}
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	query := node.PoolsArchiveSDK.Query()
@@ -63,7 +76,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 		maxPartitions, errorCh, progressCh, resultCh)
 
-	lastHeight := height
+	epoch := height
 	height = height - 12*60*2
 
 	var actor *filtypes.ActorV5
@@ -87,7 +100,7 @@ loop:
 			sampledPartitionsCount = result.SampledPartitionsCount
 			break loop
 		case err := <-errorCh:
-			log.Printf("Error at epoch %d: %v", lastHeight, err)
+			log.Printf("Error at epoch %d: %v", epoch, err)
 			return
 		case progress := <-progressCh:
 			if progress.Epoch > 0 {
@@ -137,6 +150,26 @@ loop:
 	balance, _ := util.ToFIL(actor.Balance.Int).Float64()
 	pct := diff / balance * 100
 	fmt.Printf("Approximate recovery percentage: %0.03f%%\n", pct)
+	jsonResult := &JSONResult{
+		Epoch:             epoch,
+		Miner:             minerAddr,
+		SectorsTerminated: sectorsTerminated,
+		SectorsCount:      sectorsCount,
+		Balance:           actor.Balance.Int,
+		TotalBurn:         totalBurn,
+		LiquidationValue:  difference,
+		RecoveryRatio:     diff / balance,
+	}
+	b, err := json.Marshal(jsonResult)
+	if err != nil {
+		log.Printf("Error at epoch %d: %v", epoch, err)
+		return
+	}
+	str := fmt.Sprintf("%s\n", string(b))
+	io.WriteString(w, str)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func main() {
