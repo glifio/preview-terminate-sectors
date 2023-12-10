@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/filecoin-project/go-address"
 	filtypes "github.com/filecoin-project/lotus/chain/types"
@@ -64,10 +66,21 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	optimize := true
 	offchain := true
 
-	// tipset := fmt.Sprintf("@%d", height)
-	tipset := ""
-	var height uint64
-	var epoch uint64
+	var epochs []uint64
+
+	fmt.Printf("Query: %+v\n", r.URL.Query())
+	if r.URL.Query().Has("epochs") {
+		epochsString := r.URL.Query().Get("epochs")
+		epochsStrings := strings.Split(epochsString, ",")
+		for _, epochString := range epochsStrings {
+			epochNum, err := strconv.ParseUint(epochString, 10, 64)
+			if err != nil {
+				log.Printf("Could not parse epoch: %s", epochString)
+				return
+			}
+			epochs = append(epochs, epochNum)
+		}
+	}
 
 	minerAddr, err := address.NewFromString(minerID)
 	if err != nil {
@@ -76,105 +89,118 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errorCh := make(chan error)
-	progressCh := make(chan *types.PreviewTerminateSectorsProgress)
-	resultCh := make(chan *types.PreviewTerminateSectorsReturn)
+	if len(epochs) == 0 {
+		epochs = append(epochs, 0)
+	}
 
-	go query.PreviewTerminateSectors(ctx, minerAddr,
-		tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
-		maxPartitions, errorCh, progressCh, resultCh)
+epochsLoop:
+	for _, height := range epochs {
+		tipset := ""
+		if height > 0 {
+			tipset = fmt.Sprintf("@%d", height)
+		}
 
-	var actor *filtypes.ActorV5
-	var totalBurn *big.Int
-	var sectorsTerminated uint64
-	var sectorsCount uint64
-	var sectorsInSkippedPartitions uint64
-	var partitionsCount uint64
-	var sampledPartitionsCount uint64
+		errorCh := make(chan error)
+		progressCh := make(chan *types.PreviewTerminateSectorsProgress)
+		resultCh := make(chan *types.PreviewTerminateSectorsReturn)
 
-loop:
-	for {
-		select {
-		case result := <-resultCh:
-			epoch = uint64(result.Epoch)
-			actor = result.Actor
-			totalBurn = result.TotalBurn
-			sectorsTerminated = result.SectorsTerminated
-			sectorsCount = result.SectorsCount
-			sectorsInSkippedPartitions = result.SectorsInSkippedPartitions
-			partitionsCount = result.PartitionsCount
-			sampledPartitionsCount = result.SampledPartitionsCount
-			break loop
-		case err := <-errorCh:
-			log.Printf("Error at epoch %d: %v", epoch, err)
-			return
-		case progress := <-progressCh:
-			if progress.Epoch > 0 {
-				fmt.Printf("Epoch: %d\n", progress.Epoch)
-				fmt.Printf("Worker: %v (Balance: %v)\n", progress.MinerInfo.Worker,
-					util.ToFIL(progress.WorkerActor.Balance.Int))
-				fmt.Printf("Epoch used for immutable deadlines: %d (Worker balance: %v)\n",
-					progress.PrevHeightForImmutable,
-					util.ToFIL(progress.WorkerActorPrev.Balance.Int))
-				fmt.Printf("Batch Size: %d\n", progress.BatchSize)
-				fmt.Printf("Gas Limit: %d\n", progress.GasLimit)
-			}
-			if progress.SectorsCount > 0 && progress.SliceEnd == 0 {
-				immutable := ""
-				if progress.DeadlineImmutable {
-					immutable = " (Immutable)"
+		go query.PreviewTerminateSectors(ctx, minerAddr,
+			tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
+			maxPartitions, errorCh, progressCh, resultCh)
+
+		var epoch uint64
+		var actor *filtypes.ActorV5
+		var totalBurn *big.Int
+		var sectorsTerminated uint64
+		var sectorsCount uint64
+		var sectorsInSkippedPartitions uint64
+		var partitionsCount uint64
+		var sampledPartitionsCount uint64
+
+	loop:
+		for {
+			select {
+			case result := <-resultCh:
+				epoch = uint64(result.Epoch)
+				actor = result.Actor
+				totalBurn = result.TotalBurn
+				sectorsTerminated = result.SectorsTerminated
+				sectorsCount = result.SectorsCount
+				sectorsInSkippedPartitions = result.SectorsInSkippedPartitions
+				partitionsCount = result.PartitionsCount
+				sampledPartitionsCount = result.SampledPartitionsCount
+				break loop
+			case err := <-errorCh:
+				log.Printf("Error at epoch %d: %v", epoch, err)
+				continue epochsLoop
+			case progress := <-progressCh:
+				if progress.Epoch > 0 {
+					fmt.Printf("Epoch: %d\n", progress.Epoch)
+					fmt.Printf("Worker: %v (Balance: %v)\n", progress.MinerInfo.Worker,
+						util.ToFIL(progress.WorkerActor.Balance.Int))
+					fmt.Printf("Epoch used for immutable deadlines: %d (Worker balance: %v)\n",
+						progress.PrevHeightForImmutable,
+						util.ToFIL(progress.WorkerActorPrev.Balance.Int))
+					fmt.Printf("Batch Size: %d\n", progress.BatchSize)
+					fmt.Printf("Gas Limit: %d\n", progress.GasLimit)
 				}
-				fmt.Printf("%d/%d: Deadline %d%s Partition %d Sectors %d\n",
-					progress.DeadlinePartitionIndex+1,
-					progress.DeadlinePartitionCount,
-					progress.Deadline,
-					immutable,
-					progress.Partition,
-					progress.SectorsCount,
-				)
-			}
-			if progress.SliceCount > 0 {
-				fmt.Printf("  Slice: %d to %d (->%d): %d\n", progress.SliceStart,
-					progress.SliceEnd-1, progress.SectorsCount-1, progress.SliceCount)
+				if progress.SectorsCount > 0 && progress.SliceEnd == 0 {
+					immutable := ""
+					if progress.DeadlineImmutable {
+						immutable = " (Immutable)"
+					}
+					fmt.Printf("%d/%d: Deadline %d%s Partition %d Sectors %d\n",
+						progress.DeadlinePartitionIndex+1,
+						progress.DeadlinePartitionCount,
+						progress.Deadline,
+						immutable,
+						progress.Partition,
+						progress.SectorsCount,
+					)
+				}
+				if progress.SliceCount > 0 {
+					fmt.Printf("  Slice: %d to %d (->%d): %d\n", progress.SliceStart,
+						progress.SliceEnd-1, progress.SectorsCount-1, progress.SliceCount)
+				}
 			}
 		}
-	}
 
-	fmt.Printf("Sectors Terminated: %d\n", sectorsTerminated)
-	fmt.Printf("Sectors In Skipped Partitions: %d\n", sectorsInSkippedPartitions)
-	fmt.Printf("Sectors Count: %d\n", sectorsCount)
-	fmt.Printf("Partitions Count: %d\n", partitionsCount)
-	fmt.Printf("Sampled Partitions Count: %d\n", sampledPartitionsCount)
+		fmt.Printf("Sectors Terminated: %d\n", sectorsTerminated)
+		fmt.Printf("Sectors In Skipped Partitions: %d\n", sectorsInSkippedPartitions)
+		fmt.Printf("Sectors Count: %d\n", sectorsCount)
+		fmt.Printf("Partitions Count: %d\n", partitionsCount)
+		fmt.Printf("Sampled Partitions Count: %d\n", sampledPartitionsCount)
 
-	fmt.Printf("Miner actor balance (attoFIL): %s\n", actor.Balance)
-	fmt.Printf("Total burn (attoFIL): %s\n", totalBurn)
-	fmt.Printf("Miner actor balance (FIL): %0.03f\n", util.ToFIL(actor.Balance.Int))
-	fmt.Printf("Total burn (FIL): %0.03f\n", util.ToFIL(totalBurn))
-	difference := new(big.Int).Sub(actor.Balance.Int, totalBurn)
-	fmt.Printf("Approximate liquidation value (FIL): %0.03f\n", util.ToFIL(difference))
-	diff, _ := util.ToFIL(difference).Float64()
-	balance, _ := util.ToFIL(actor.Balance.Int).Float64()
-	pct := diff / balance * 100
-	fmt.Printf("Approximate recovery percentage: %0.03f%%\n", pct)
-	jsonResult := &JSONResult{
-		Epoch:             epoch,
-		Miner:             minerAddr,
-		SectorsTerminated: sectorsTerminated,
-		SectorsCount:      sectorsCount,
-		Balance:           actor.Balance.Int,
-		TotalBurn:         totalBurn,
-		LiquidationValue:  difference,
-		RecoveryRatio:     diff / balance,
-	}
-	b, err := json.Marshal(jsonResult)
-	if err != nil {
-		log.Printf("Error at epoch %d: %v", epoch, err)
-		return
-	}
-	str := fmt.Sprintf("%s\n", string(b))
-	io.WriteString(w, str)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
+		fmt.Printf("Miner actor balance (attoFIL): %s\n", actor.Balance)
+		fmt.Printf("Total burn (attoFIL): %s\n", totalBurn)
+		fmt.Printf("Miner actor balance (FIL): %0.03f\n", util.ToFIL(actor.Balance.Int))
+		fmt.Printf("Total burn (FIL): %0.03f\n", util.ToFIL(totalBurn))
+		difference := new(big.Int).Sub(actor.Balance.Int, totalBurn)
+		fmt.Printf("Approximate liquidation value (FIL): %0.03f\n", util.ToFIL(difference))
+		diff, _ := util.ToFIL(difference).Float64()
+		balance, _ := util.ToFIL(actor.Balance.Int).Float64()
+		pct := diff / balance * 100
+		fmt.Printf("Approximate recovery percentage: %0.03f%%\n", pct)
+		jsonResult := &JSONResult{
+			Epoch:             epoch,
+			Miner:             minerAddr,
+			SectorsTerminated: sectorsTerminated,
+			SectorsCount:      sectorsCount,
+			Balance:           actor.Balance.Int,
+			TotalBurn:         totalBurn,
+			LiquidationValue:  difference,
+			RecoveryRatio:     diff / balance,
+		}
+		b, err := json.Marshal(jsonResult)
+		if err != nil {
+			log.Printf("Error at epoch %d: %v", epoch, err)
+			continue epochsLoop
+		}
+		str := fmt.Sprintf("%s\n", string(b))
+		io.WriteString(w, str)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
 	}
 }
 
