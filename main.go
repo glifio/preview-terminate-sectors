@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var height uint64 = 3459431
+var height uint64 = 3461984
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	query := node.PoolsArchiveSDK.Query()
@@ -48,7 +48,9 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	*/
 	minerAddr, err := address.NewFromString(minerID)
 	if err != nil {
-		log.Fatal(err)
+		// FIXME: 404
+		log.Print(err)
+		return
 	}
 
 	fmt.Println("---")
@@ -60,6 +62,9 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	go query.PreviewTerminateSectors(context.Background(), minerAddr,
 		tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 		maxPartitions, errorCh, progressCh, resultCh)
+
+	lastHeight := height
+	height = height - 12*60*2
 
 	var actor *filtypes.ActorV5
 	var totalBurn *big.Int
@@ -82,7 +87,8 @@ loop:
 			sampledPartitionsCount = result.SampledPartitionsCount
 			break loop
 		case err := <-errorCh:
-			log.Fatal(err)
+			log.Printf("Error at epoch %d: %v", lastHeight, err)
+			return
 		case progress := <-progressCh:
 			if progress.Epoch > 0 {
 				fmt.Printf("Epoch: %d\n", progress.Epoch)
@@ -131,7 +137,6 @@ loop:
 	balance, _ := util.ToFIL(actor.Balance.Int).Float64()
 	pct := diff / balance * 100
 	fmt.Printf("Approximate recovery percentage: %0.03f%%\n", pct)
-	height = height - 12*60*2
 }
 
 func main() {
