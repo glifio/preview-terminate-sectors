@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var height uint64 = 3461984
+// var height uint64 = 3461984
 
 type JSONResult struct {
 	Epoch             uint64
@@ -64,19 +64,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	optimize := true
 	offchain := true
 
-	tipset := fmt.Sprintf("@%d", height)
+	// tipset := fmt.Sprintf("@%d", height)
+	tipset := ""
+	var height uint64
+	var epoch uint64
 
-	/*
-		fmt.Printf("got / request\n")
-		for i := 0; i < 100; i++ {
-			str := fmt.Sprintf("{\"seq\": %d}\n", i)
-			io.WriteString(w, str)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-			time.Sleep(1 * time.Second)
-		}
-	*/
 	minerAddr, err := address.NewFromString(minerID)
 	if err != nil {
 		// FIXME: 404
@@ -92,9 +84,6 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 		maxPartitions, errorCh, progressCh, resultCh)
 
-	epoch := height
-	height = height - 12*60*2
-
 	var actor *filtypes.ActorV5
 	var totalBurn *big.Int
 	var sectorsTerminated uint64
@@ -107,6 +96,7 @@ loop:
 	for {
 		select {
 		case result := <-resultCh:
+			epoch = uint64(result.Epoch)
 			actor = result.Actor
 			totalBurn = result.TotalBurn
 			sectorsTerminated = result.SectorsTerminated
