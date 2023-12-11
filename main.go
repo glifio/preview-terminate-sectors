@@ -268,6 +268,7 @@ func main() {
 		c := cors.New(cors.Options{
 			AllowedOrigins:   origins,
 			AllowCredentials: true,
+			AllowedHeaders:   []string{"Authorization"},
 			// Enable Debugging for testing, consider disabling in production
 			Debug: true,
 		})
