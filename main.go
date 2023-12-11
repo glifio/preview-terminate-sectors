@@ -56,6 +56,13 @@ func auth(fn http.HandlerFunc) http.HandlerFunc {
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	if r.Method != "GET" {
+		str := fmt.Sprintf("Unsupported Method: %s", r.Method)
+		log.Print(str)
+		http.Error(w, str, http.StatusNotFound)
+		return
+	}
+
 	fmt.Println("---")
 	fmt.Printf("Request Path: %+v\n", r.URL.Path)
 
@@ -252,7 +259,22 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", auth(getRoot))
-	handler := cors.Default().Handler(mux)
+	corsOrigins := viper.GetString("cors_origins")
+
+	var handler http.Handler
+	if corsOrigins != "" {
+		fmt.Println("Using CORS origins:", corsOrigins)
+		origins := strings.Split(corsOrigins, ",")
+		c := cors.New(cors.Options{
+			AllowedOrigins:   origins,
+			AllowCredentials: true,
+			// Enable Debugging for testing, consider disabling in production
+			Debug: true,
+		})
+		handler = c.Handler(mux)
+	} else {
+		handler = mux
+	}
 	err := http.ListenAndServe(":3000", handler)
 	if errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf("server closed\n")
