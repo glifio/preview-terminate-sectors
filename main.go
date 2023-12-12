@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/lotus/api"
 	filtypes "github.com/filecoin-project/lotus/chain/types"
 	"github.com/glifio/go-pools/types"
 	"github.com/glifio/go-pools/util"
@@ -34,6 +35,7 @@ type JSONResult struct {
 	TotalBurn         *big.Int
 	LiquidationValue  *big.Int
 	RecoveryRatio     float64
+	MinerPower        *api.MinerPower
 }
 
 var pathRE *regexp.Regexp
@@ -76,6 +78,11 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	minerID := match[1]
 
 	query := node.PoolsArchiveSDK.Query()
+	client, closer, err := node.PoolsArchiveSDK.Extern().ConnectLotusClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer closer()
 
 	var batchSize uint64 = 40
 	var gasLimit uint64 = 270000000000
@@ -115,6 +122,8 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		epochs = append(epochs, 0)
 	}
 
+	var ts *filtypes.TipSet
+
 epochsLoop:
 	for _, height := range epochs {
 		tipset := ""
@@ -151,6 +160,7 @@ epochsLoop:
 				sectorsInSkippedPartitions = result.SectorsInSkippedPartitions
 				partitionsCount = result.PartitionsCount
 				sampledPartitionsCount = result.SampledPartitionsCount
+				ts = result.Tipset
 				break loop
 			case err := <-errorCh:
 				log.Printf("Error at epoch %d: %v", epoch, err)
@@ -208,6 +218,13 @@ epochsLoop:
 		balance, _ := util.ToFIL(actor.Balance.Int).Float64()
 		pct := diff / balance * 100
 		fmt.Printf("Approximate recovery percentage: %0.03f%%\n", pct)
+
+		minerPower, err := client.StateMinerPower(ctx, minerAddr, ts.Key())
+		if err != nil {
+			log.Printf("Error at epoch %d: %v", epoch, err)
+			io.WriteString(w, fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}", epoch, err))
+		}
+
 		jsonResult := &JSONResult{
 			Epoch:             epoch,
 			Miner:             minerAddr,
@@ -217,6 +234,7 @@ epochsLoop:
 			TotalBurn:         totalBurn,
 			LiquidationValue:  difference,
 			RecoveryRatio:     diff / balance,
+			MinerPower:        minerPower,
 		}
 		b, err := json.Marshal(jsonResult)
 		if err != nil {
