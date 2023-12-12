@@ -125,7 +125,8 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	var ts *filtypes.TipSet
 
 epochsLoop:
-	for _, height := range epochs {
+	for i, height := range epochs {
+		fmt.Printf(">>> %d/%d: Height %d\n", i+1, len(epochs), height)
 		tipset := ""
 		if height > 0 {
 			tipset = fmt.Sprintf("@%d", height)
@@ -223,6 +224,10 @@ epochsLoop:
 		if err != nil {
 			log.Printf("Error at epoch %d: %v", epoch, err)
 			io.WriteString(w, fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}", epoch, err))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			continue epochsLoop
 		}
 
 		jsonResult := &JSONResult{
@@ -247,6 +252,7 @@ epochsLoop:
 			f.Flush()
 		}
 	}
+	fmt.Println("Done.")
 }
 
 func main() {
