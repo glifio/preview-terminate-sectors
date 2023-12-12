@@ -36,6 +36,7 @@ type JSONResult struct {
 	LiquidationValue  *big.Int
 	RecoveryRatio     float64
 	MinerPower        *api.MinerPower
+	Error             string
 }
 
 var pathRE *regexp.Regexp
@@ -165,8 +166,12 @@ epochsLoop:
 				break loop
 			case err := <-errorCh:
 				log.Printf("Error at epoch %d: %v", epoch, err)
-				str := fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}\n", epoch, err)
-				io.WriteString(w, str)
+				jsonResult := &JSONResult{
+					Epoch: epoch,
+					Error: err.Error(),
+				}
+				b, _ := json.Marshal(jsonResult)
+				io.WriteString(w, string(b)+"\n")
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
@@ -223,7 +228,12 @@ epochsLoop:
 		minerPower, err := client.StateMinerPower(ctx, minerAddr, ts.Key())
 		if err != nil {
 			log.Printf("Error at epoch %d: %v", epoch, err)
-			io.WriteString(w, fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}", epoch, err))
+			jsonResult := &JSONResult{
+				Epoch: epoch,
+				Error: err.Error(),
+			}
+			b, _ := json.Marshal(jsonResult)
+			io.WriteString(w, string(b)+"\n")
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}
@@ -244,10 +254,13 @@ epochsLoop:
 		b, err := json.Marshal(jsonResult)
 		if err != nil {
 			log.Printf("Error at epoch %d: %v", epoch, err)
-			b = []byte(fmt.Sprintf("{\"Epoch\": %d, \"Error\": \"%s\"}", epoch, err))
+			jsonResult := &JSONResult{
+				Epoch: epoch,
+				Error: err.Error(),
+			}
+			b, _ = json.Marshal(jsonResult)
 		}
-		str := fmt.Sprintf("%s\n", string(b))
-		io.WriteString(w, str)
+		io.WriteString(w, string(b)+"\n")
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
