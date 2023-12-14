@@ -17,7 +17,7 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/lotus/api"
 	filtypes "github.com/filecoin-project/lotus/chain/types"
-	"github.com/glifio/go-pools/types"
+	"github.com/glifio/go-pools/terminate"
 	"github.com/glifio/go-pools/util"
 	"github.com/jimpick/preview-terminate-sectors/node"
 	"github.com/rs/cors"
@@ -27,16 +27,17 @@ import (
 // var height uint64 = 3461984
 
 type JSONResult struct {
-	Epoch             uint64
-	Miner             address.Address
-	SectorsTerminated uint64
-	SectorsCount      uint64
-	Balance           *big.Int
-	TotalBurn         *big.Int
-	LiquidationValue  *big.Int
-	RecoveryRatio     float64
-	MinerPower        *api.MinerPower
-	Error             string
+	Epoch              uint64
+	Miner              address.Address
+	SectorsTerminated  uint64
+	SectorsCount       uint64
+	Balance            *big.Int
+	TerminationPenalty *big.Int
+	LiquidationValue   *big.Int
+	RecoveryRatio      float64
+	MinerPower         *api.MinerPower
+	AverageAge         uint64
+	Error              string
 }
 
 var pathRE *regexp.Regexp
@@ -78,7 +79,6 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	minerID := match[1]
 
-	query := node.PoolsArchiveSDK.Query()
 	client, closer, err := node.PoolsArchiveSDK.Extern().ConnectLotusClient()
 	if err != nil {
 		log.Fatal(err)
@@ -134,16 +134,16 @@ epochsLoop:
 		}
 
 		errorCh := make(chan error)
-		progressCh := make(chan *types.PreviewTerminateSectorsProgress)
-		resultCh := make(chan *types.PreviewTerminateSectorsReturn)
+		progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
+		resultCh := make(chan *terminate.PreviewTerminateSectorsReturn)
 
-		go query.PreviewTerminateSectors(ctx, minerAddr,
+		go terminate.PreviewTerminateSectors(ctx, *client, minerAddr,
 			tipset, height, batchSize, gasLimit, sampleSectors, optimize, offchain,
 			maxPartitions, errorCh, progressCh, resultCh)
 
 		var epoch uint64 = height
 		var actor *filtypes.ActorV5
-		var totalBurn *big.Int
+		var stats *terminate.SectorStats
 		var sectorsTerminated uint64
 		var sectorsCount uint64
 		var sectorsInSkippedPartitions uint64
@@ -156,7 +156,7 @@ epochsLoop:
 			case result := <-resultCh:
 				epoch = uint64(result.Epoch)
 				actor = result.Actor
-				totalBurn = result.TotalBurn
+				stats = result.SectorStats
 				sectorsTerminated = result.SectorsTerminated
 				sectorsCount = result.SectorsCount
 				sectorsInSkippedPartitions = result.SectorsInSkippedPartitions
@@ -215,10 +215,10 @@ epochsLoop:
 		fmt.Printf("Sampled Partitions Count: %d\n", sampledPartitionsCount)
 
 		fmt.Printf("Miner actor balance (attoFIL): %s\n", actor.Balance)
-		fmt.Printf("Total burn (attoFIL): %s\n", totalBurn)
+		fmt.Printf("Total burn (attoFIL): %s\n", stats.TerminationPenalty)
 		fmt.Printf("Miner actor balance (FIL): %0.03f\n", util.ToFIL(actor.Balance.Int))
-		fmt.Printf("Total burn (FIL): %0.03f\n", util.ToFIL(totalBurn))
-		difference := new(big.Int).Sub(actor.Balance.Int, totalBurn)
+		fmt.Printf("Total burn (FIL): %0.03f\n", util.ToFIL(stats.TerminationPenalty))
+		difference := new(big.Int).Sub(actor.Balance.Int, stats.TerminationPenalty)
 		fmt.Printf("Approximate liquidation value (FIL): %0.03f\n", util.ToFIL(difference))
 		diff, _ := util.ToFIL(difference).Float64()
 		balance, _ := util.ToFIL(actor.Balance.Int).Float64()
@@ -240,16 +240,22 @@ epochsLoop:
 			continue epochsLoop
 		}
 
+		var ageAvg uint64
+		if stats.SectorCount > 0 {
+			ageAvg = new(big.Int).Div(stats.Age, big.NewInt(stats.SectorCount)).Uint64()
+		}
+
 		jsonResult := &JSONResult{
-			Epoch:             epoch,
-			Miner:             minerAddr,
-			SectorsTerminated: sectorsTerminated,
-			SectorsCount:      sectorsCount,
-			Balance:           actor.Balance.Int,
-			TotalBurn:         totalBurn,
-			LiquidationValue:  difference,
-			RecoveryRatio:     diff / balance,
-			MinerPower:        minerPower,
+			Epoch:              epoch,
+			Miner:              minerAddr,
+			SectorsTerminated:  sectorsTerminated,
+			SectorsCount:       sectorsCount,
+			Balance:            actor.Balance.Int,
+			TerminationPenalty: stats.TerminationPenalty,
+			LiquidationValue:   difference,
+			RecoveryRatio:      diff / balance,
+			MinerPower:         minerPower,
+			AverageAge:         ageAvg,
 		}
 		b, err := json.Marshal(jsonResult)
 		if err != nil {
