@@ -27,17 +27,17 @@ import (
 // var height uint64 = 3461984
 
 type JSONResult struct {
-	Epoch              uint64
-	Miner              address.Address
-	SectorsTerminated  uint64
-	SectorsCount       uint64
-	Balance            *big.Int
-	TerminationPenalty *big.Int
-	LiquidationValue   *big.Int
-	RecoveryRatio      float64
-	MinerPower         *api.MinerPower
-	AverageAge         uint64
-	Error              string
+	Epoch             uint64
+	Miner             address.Address
+	SectorsTerminated uint64
+	SectorsCount      uint64
+	Balance           *big.Int
+	LiquidationValue  *big.Int
+	SectorStats       *terminate.SectorStats
+	RecoveryRatio     float64
+	MinerPower        *api.MinerPower
+	AverageAge        uint64
+	Error             string
 }
 
 var pathRE *regexp.Regexp
@@ -246,16 +246,16 @@ epochsLoop:
 		}
 
 		jsonResult := &JSONResult{
-			Epoch:              epoch,
-			Miner:              minerAddr,
-			SectorsTerminated:  sectorsTerminated,
-			SectorsCount:       sectorsCount,
-			Balance:            actor.Balance.Int,
-			TerminationPenalty: stats.TerminationPenalty,
-			LiquidationValue:   difference,
-			RecoveryRatio:      diff / balance,
-			MinerPower:         minerPower,
-			AverageAge:         ageAvg,
+			Epoch:             epoch,
+			Miner:             minerAddr,
+			SectorsTerminated: sectorsTerminated,
+			SectorsCount:      sectorsCount,
+			Balance:           actor.Balance.Int,
+			SectorStats:       stats,
+			LiquidationValue:  difference,
+			RecoveryRatio:     diff / balance,
+			MinerPower:        minerPower,
+			AverageAge:        ageAvg,
 		}
 		b, err := json.Marshal(jsonResult)
 		if err != nil {
