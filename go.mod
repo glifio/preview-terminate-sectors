@@ -166,7 +166,7 @@ require (
 
 require (
 	github.com/filecoin-project/go-address v1.1.0
-	github.com/glifio/go-pools v0.0.0-20231214012738-4099832d6f8c
+	github.com/glifio/go-pools v0.0.0-20231215051911-7ae13e08102a
 	github.com/spf13/viper v1.18.1
 )
 

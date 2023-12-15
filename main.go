@@ -17,6 +17,7 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/lotus/api"
 	filtypes "github.com/filecoin-project/lotus/chain/types"
+	"github.com/glifio/go-pools/mstat"
 	"github.com/glifio/go-pools/terminate"
 	"github.com/glifio/go-pools/util"
 	"github.com/jimpick/preview-terminate-sectors/node"
@@ -29,6 +30,7 @@ import (
 type JSONResult struct {
 	Epoch             uint64
 	Miner             address.Address
+	MinerStats        *mstat.MinerStats
 	SectorsTerminated uint64
 	SectorsCount      uint64
 	Balance           *big.Int
@@ -69,6 +71,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("---")
 	fmt.Printf("Request Path: %+v\n", r.URL.Path)
+	fmt.Printf("Query: %+v\n", r.URL.Query())
 
 	match := pathRE.FindStringSubmatch(r.URL.Path)
 	if len(match) != 2 {
@@ -94,8 +97,6 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	offchain := true
 
 	var epochs []uint64
-
-	fmt.Printf("Query: %+v\n", r.URL.Query())
 	if r.URL.Query().Has("epochs") {
 		epochsString := r.URL.Query().Get("epochs")
 		epochsStrings := strings.Split(epochsString, ",")
@@ -240,6 +241,21 @@ epochsLoop:
 			continue epochsLoop
 		}
 
+		minerStats, err := mstat.ComputeMinerStats(ctx, minerAddr, ts, client)
+		if err != nil {
+			log.Printf("Error at epoch %d: %v", epoch, err)
+			jsonResult := &JSONResult{
+				Epoch: epoch,
+				Error: err.Error(),
+			}
+			b, _ := json.Marshal(jsonResult)
+			io.WriteString(w, string(b)+"\n")
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			continue epochsLoop
+		}
+
 		var ageAvg uint64
 		if stats.SectorCount > 0 {
 			ageAvg = new(big.Int).Div(stats.Age, big.NewInt(stats.SectorCount)).Uint64()
@@ -248,6 +264,7 @@ epochsLoop:
 		jsonResult := &JSONResult{
 			Epoch:             epoch,
 			Miner:             minerAddr,
+			MinerStats:        minerStats,
 			SectorsTerminated: sectorsTerminated,
 			SectorsCount:      sectorsCount,
 			Balance:           actor.Balance.Int,
